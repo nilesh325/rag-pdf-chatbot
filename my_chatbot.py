@@ -73,7 +73,7 @@ if file is not None:
     if user_question:
         llm_for_classification = ChatMistralAI(
             mistral_api_key=mistral_api_key,
-            temperature=0.0,  # deterministic output
+            temperature=0.7,  # deterministic output
             max_tokens=10,    # just need a short response
             model="mistral-small")
         intent = classify_response_type(user_question, llm_for_classification)
