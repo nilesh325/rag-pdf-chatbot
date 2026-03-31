@@ -5,3 +5,4 @@ langchain-community
 langchain-mistralai
 langgraph
 sentence-transformers
+faiss-cpu
