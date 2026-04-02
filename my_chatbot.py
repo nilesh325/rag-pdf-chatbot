@@ -6,8 +6,9 @@ from langchain_community.vectorstores import FAISS
 from langchain_mistralai import ChatMistralAI
 from langgraph.graph import StateGraph  
 import math
+import re
 
-mistral_api_key = "Enter_your mistral API key here"
+mistral_api_key = "diekRCMZhHW7GP14HpuVnL6OWV0Wiqu0"
 
 st.header("My Chatbot")
 #Sidebar
@@ -57,9 +58,10 @@ if file is not None:
 
     # Step 1: classify response type i.e. brief or detailed
     def classify_response_type(user_question, llm):
-        classification_prompt = f"""The user asked: "{user_question}" Decide number of maximum tokens needed to answer this question.Just return maximum number of tokens"""
-        intent = llm.invoke(classification_prompt).content.strip()
-        return intent
+        prompt = f"""The user asked: "{user_question}" Decide the maximum number of tokens needed to answer this question fully.Return ONLY a number, nothing else."""
+        raw = llm.invoke(prompt).content.strip()
+        match = re.search(r'\d+', raw)
+        return max(500, int(match.group())) if match else 500
 
     if user_question:
         llm_for_classification = ChatMistralAI(
@@ -67,10 +69,9 @@ if file is not None:
             temperature=0.7,  # deterministic output
             max_tokens=10,    # just need a short response
             model="mistral-small")
-        intent = classify_response_type(user_question, llm_for_classification)
 
 #6) Similarity search in vector database
-        match = vector_store.similarity_search(user_question)
+        match = vector_store.similarity_search(user_question,k=6)
         max_tokens = int(classify_response_type(user_question, llm_for_classification))
         llm = ChatMistralAI(
             mistral_api_key=mistral_api_key,
