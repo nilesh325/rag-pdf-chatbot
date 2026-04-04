@@ -1,0 +1,57 @@
+body {
+    font-family: Arial, sans-serif;
+    background: linear-gradient(135deg, #141e30, #243b55);
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+/* Card */
+.container {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 30px;
+    border-radius: 15px;
+    width: 420px;
+    text-align: center;
+    backdrop-filter: blur(10px);
+}
+
+/* Heading */
+h1 {
+    margin-bottom: 20px;
+}
+
+/* Inputs */
+input, button {
+    width: 100%;
+    padding: 12px;
+    margin: 10px 0;
+    border-radius: 8px;
+    border: none;
+}
+
+/* File & text input */
+input {
+    background: rgba(255,255,255,0.2);
+    color: white;
+}
+
+/* Button */
+button {
+    background: #00c6ff;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #0072ff;
+}
+
+/* Response box */
+#response-box {
+    margin-top: 20px;
+    text-align: left;
+}

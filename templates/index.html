@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>PDF Chatbot</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="container">
+    <h1>📄 AI PDF Chatbot</h1>
+
+    <!-- ✅ IMPORTANT enctype added -->
+    <form id="chat-form" enctype="multipart/form-data">
+        <input type="file" id="pdf" name="pdf" accept="application/pdf" required>
+
+        <input type="text" id="question" name="question"
+               placeholder="Ask something about your PDF..." required>
+
+        <button type="submit">Ask</button>
+    </form>
+
+    <div id="response-box">
+        <h3>Answer:</h3>
+        <p id="answer"></p>
+    </div>
+</div>
+
+<script>
+document.getElementById("chat-form").addEventListener("submit", async function(e) {
+    e.preventDefault();
+
+    let fileInput = document.getElementById("pdf");
+    let questionInput = document.getElementById("question");
+
+    if (fileInput.files.length === 0) {
+        alert("Please upload a PDF first!");
+        return;
+    }
+
+    let formData = new FormData();
+    formData.append("pdf", fileInput.files[0]);
+    formData.append("question", questionInput.value);
+
+    document.getElementById("answer").innerText = "⏳ Thinking...";
+
+    try {
+        let response = await fetch("/ask", {
+            method: "POST",
+            body: formData
+        });
+
+        let data = await response.json();
+        document.getElementById("answer").innerText = data.answer;
+
+    } catch (error) {
+        document.getElementById("answer").innerText = "❌ Error connecting to server.";
+    }
+});
+</script>
+
+</body>
+</html>

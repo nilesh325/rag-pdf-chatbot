@@ -1,120 +1,106 @@
-import streamlit as st
+from flask import Flask, render_template, request, jsonify
 from PyPDF2 import PdfReader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_mistralai import ChatMistralAI
-from langgraph.graph import StateGraph  
 import math
 
-mistral_api_key = "Enter_your mistral API key here"
+app = Flask(__name__)
 
-st.header("My Chatbot")
-#Sidebar
-with st.sidebar:
-    st.title("Your Documents")
-    file = st.file_uploader("Upload a PDF file and start asking questions", type="pdf")
+mistral_api_key = "my-api-key"  # Replace with your Mistral API key
 
-# Dynamically calculate chunk size and overlap based on text length, model context window, and overlap ratio
+# ✅ Load embeddings ONCE (fix performance)
+embeddings = HuggingFaceEmbeddings(
+    model_name="sentence-transformers/all-mpnet-base-v2"
+)
+
+# ✅ Cache vector store
+vector_store = None
+
+
 def get_dynamic_chunk_size(text, max_context_tokens=4000, overlap_ratio=0.15):
-    
-    # Roughly assume 1 word ≈ 1 token
     total_words = len(text.split())
-    
-    # Aiming for ~10 chunks max (tuneable)
     target_chunks = min(10, math.ceil(total_words / 1000))
-    
     chunk_size = max_context_tokens // target_chunks
     chunk_overlap = int(chunk_size * overlap_ratio)
-    
     return chunk_size, chunk_overlap
 
-#1) Upload PDF and extract text
-if file is not None:
-    pdf_reader = PdfReader(file)
-    text = ""
-    for page in pdf_reader.pages:
-        text += page.extract_text()
-    chunk_size, chunk_overlap = get_dynamic_chunk_size(text)
 
-    text_splitter = RecursiveCharacterTextSplitter(
-        separators=["\n"],
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        length_function=len
-    )
-#2) Spliting text into chunks 
-    chunks = text_splitter.split_text(text)
+@app.route("/")
+def index():
+    return render_template("index.html")
 
-#3)Creating embeddings 
-    embeddings = HuggingFaceEmbeddings()
 
-#4)store in vector database
-    vector_store = FAISS.from_texts(chunks, embeddings)
+@app.route("/ask", methods=["POST"])
+def ask():
+    global vector_store
 
-#5)Ask questions
-    user_question = st.text_input("Type your question here")
+    if "pdf" not in request.files:
+        return jsonify({"answer": "❌ No PDF uploaded!"})
 
-    # Step 1: classify response type i.e. brief or detailed
-    def classify_response_type(user_question, llm):
-        classification_prompt = f"""The user asked: "{user_question}" Decide number of maximum tokens needed to answer this question.Just return maximum number of tokens"""
-        intent = llm.invoke(classification_prompt).content.strip()
-        return intent
+    file = request.files["pdf"]
+    question = request.form.get("question", "")
 
-    if user_question:
-        llm_for_classification = ChatMistralAI(
-            mistral_api_key=mistral_api_key,
-            temperature=0.7,  # deterministic output
-            max_tokens=10,    # just need a short response
-            model="mistral-small")
-        intent = classify_response_type(user_question, llm_for_classification)
+    if file.filename == "":
+        return jsonify({"answer": "❌ Please select a PDF file."})
 
-#6) Similarity search in vector database
-        match = vector_store.similarity_search(user_question)
-        max_tokens = int(classify_response_type(user_question, llm_for_classification))
+    if question.strip() == "":
+        return jsonify({"answer": "❌ Please enter a question."})
+
+    try:
+        # ✅ Process PDF ONLY ONCE
+        if vector_store is None:
+            pdf_reader = PdfReader(file)
+            text = ""
+
+            for page in pdf_reader.pages:
+                text += page.extract_text() or ""
+
+            if text.strip() == "":
+                return jsonify({"answer": "❌ Could not extract text from PDF."})
+
+            chunk_size, chunk_overlap = get_dynamic_chunk_size(text)
+
+            splitter = RecursiveCharacterTextSplitter(
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap
+            )
+
+            chunks = splitter.split_text(text)
+
+            vector_store = FAISS.from_texts(chunks, embeddings)
+
+        # 🔍 Retrieve relevant chunks
+        docs = vector_store.similarity_search(question)
+
+        # ✅ Fixed token limit (no truncation)
         llm = ChatMistralAI(
             mistral_api_key=mistral_api_key,
             temperature=0.7,
-            max_tokens=max_tokens,
+            max_tokens=800,
             model="mistral-small"
         )
 
-#7) Create a graph to retrieve relevant chunks and generate an answer
-        graph = StateGraph(dict)
+        # ✅ SINGLE LLM CALL (important fix)
+        response = llm.invoke(
+            f"""
+            Answer the question in a detailed and complete way.
+            Do NOT shorten the answer.
 
-        def retrieve(state):
-            return {"docs": match}
+            Context:
+            {docs}
 
-        def answer(state):
-            docs = state["docs"]
+            Question:
+            {question}
+            """
+        )
 
-            response1 = llm.invoke( 
-                f"Answer the question based on these docs:\n{docs}\n\nQuestion: {user_question}"
-            )
-            response = llm.invoke( #convert the answer to a concise and clear response with a maximum of {max_tokens} tokens.
-                f"convert this answer into a concise and clear response with a maximum of {max_tokens} tokens:\n{response1}"
-            )
-            return {"answer": response}
+        return jsonify({"answer": response.content})
 
-        graph.add_node("retrieve", retrieve)
-        graph.add_node("answer", answer)
-        graph.add_edge("retrieve", "answer")
-        graph.set_entry_point("retrieve")
-        graph.set_finish_point("answer")
-
-        compiled = graph.compile()
-        result = compiled.invoke({})
-        st.write(result["answer"].content)
+    except Exception as e:
+        return jsonify({"answer": f"❌ Error: {str(e)}"})
 
 
-
-
-
-
-
-
-
-
-
-
-    
+if __name__ == "__main__":
+    app.run(debug=True)
